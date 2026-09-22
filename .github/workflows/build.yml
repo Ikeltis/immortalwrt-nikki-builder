@@ -1,0 +1,75 @@
+name: Build ImmortalWrt with Nikki
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "ImmortalWrt version; leave empty for latest 25.12.x"
+        required: false
+        type: string
+  schedule:
+    - cron: "23 19 * * 6"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: immortalwrt-nikki-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install ImageBuilder prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            build-essential file gawk gettext libncurses-dev python3 \
+            rsync unzip zlib1g-dev zstd
+
+      - name: Build EFI ext4 image
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: ./scripts/build.sh "${REQUESTED_VERSION:-}"
+
+      - name: Read build metadata
+        id: metadata
+        run: |
+          version="$(cat dist/immortalwrt-version.txt)"
+          nikki_version="$(awk '$1 == "nikki" { print $3; exit }' dist/*.manifest)"
+          nikki_version="${nikki_version//\~/-}"
+          test -n "$version"
+          test -n "$nikki_version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "nikki_version=$nikki_version" >> "$GITHUB_OUTPUT"
+          echo "tag=immortalwrt-${version}-nikki-${nikki_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: immortalwrt-${{ steps.metadata.outputs.version }}-x86-64-efi-ext4-nikki
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.metadata.outputs.tag }}
+          name: ImmortalWrt ${{ steps.metadata.outputs.version }} + Nikki ${{ steps.metadata.outputs.nikki_version }}
+          body: |
+            Target: x86/64 generic
+            Boot: EFI
+            Root filesystem: ext4 (300 MiB partition)
+
+            The image includes nikki, luci-app-nikki and luci-i18n-nikki-zh-cn.
+            Verify the SHA256 file and test the image with `sysupgrade -T` before installation.
+          files: dist/*
+          fail_on_unmatched_files: true
+          overwrite_files: true

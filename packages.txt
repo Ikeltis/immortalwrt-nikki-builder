@@ -1,0 +1,6 @@
+# Extra packages embedded in the image.
+# The current router's /etc/apk/world entries will be added here before build.
+nikki
+luci-app-nikki
+luci-i18n-nikki-zh-cn
+

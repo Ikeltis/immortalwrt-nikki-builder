@@ -87,6 +87,7 @@ luci-i18n-zerotier-zh-cn
 luci-lib-ipkg
 luci-theme-argon
 mkf2fs
+mihomo-meta
 mtd
 nikki
 odhcp6c

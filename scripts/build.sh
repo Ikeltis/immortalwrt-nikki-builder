@@ -11,6 +11,7 @@ readonly nikki_key="https://nikkinikki.pages.dev/public-key.pem"
 readonly project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly work_dir="${project_dir}/work"
 readonly dist_dir="${project_dir}/dist"
+readonly files_dir="${work_dir}/files"
 
 requested_version="${1:-}"
 if [[ -n "$requested_version" ]]; then
@@ -59,12 +60,21 @@ curl --fail --silent --show-error --location \
   --output "${builder_dir}/keys/nikki.pem" "$nikki_key"
 printf '%s\n' "$nikki_repo" >> "${builder_dir}/repositories"
 
+# ImageBuilder keys only verify packages during the build. Install the Nikki
+# key and repository into the target rootfs too, so `apk update` works after
+# sysupgrade without rerunning the upstream feed installer.
+mkdir -p "${files_dir}/etc/apk/keys" "${files_dir}/etc/apk/repositories.d"
+cp "${builder_dir}/keys/nikki.pem" "${files_dir}/etc/apk/keys/nikki.pem"
+chmod 0644 "${files_dir}/etc/apk/keys/nikki.pem"
+printf '%s\n' "$nikki_repo" > "${files_dir}/etc/apk/repositories.d/nikki.list"
+
 mapfile -t package_lines < <(sed -e 's/#.*$//' -e '/^[[:space:]]*$/d' "${project_dir}/packages.txt")
 packages="${package_lines[*]}"
 
 make -C "$builder_dir" image \
   PROFILE="$profile" \
   PACKAGES="$packages" \
+  FILES="$files_dir" \
   ROOTFS_PARTSIZE="$rootfs_partsize"
 
 output_dir="${builder_dir}/bin/targets/x86/64"
